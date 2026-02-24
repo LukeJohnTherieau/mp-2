@@ -1,4 +1,4 @@
-import {Train} from "./Train.ts";
+import type {Train} from "./Train.ts";
 
 export interface TrainData{
     id: string;

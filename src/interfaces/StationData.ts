@@ -1,4 +1,4 @@
-import {Station} from "./Station.ts";
+import type {Station} from "./Station.ts";
 
 export interface StationData{
     id: string;
