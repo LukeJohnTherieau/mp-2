@@ -1,4 +1,4 @@
-import {TrainData} from "./Train.ts";
+import {TrainData} from "./TrainData.ts";
 
 export interface Station{
     address: string,
