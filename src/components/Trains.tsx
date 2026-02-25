@@ -9,6 +9,7 @@ const TrainLineDiv = styled.div`
   outline: 2px solid black;
   border-radius: 5px 5px 5px 5px;
 `;
+
 const TrainLineTitle = styled.h2<{ $name?: string; }>`
 color: white;
       padding: 10px;
@@ -62,8 +63,6 @@ const TrainTable = styled.table`
 const TrainTd = styled.td`
     text-align: left;
   `;
-
-
 
 export default function Trains(props: { name: string, train: TrainData[] }) {
   return (
