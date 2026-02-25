@@ -15,5 +15,5 @@ export interface Station{
     vehicle_type: number,
     wheelchair_boarding: number,
     distance: number,
-    trains: TrainData[]
+    trains:  Map<string, TrainData[]>
 }

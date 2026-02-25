@@ -1,56 +1,58 @@
 import type { StationData } from "../interfaces/StationData.ts";
 import type { TrainData } from "../interfaces/TrainData.ts";
-import { useState } from 'react'
+import { MapContainer, TileLayer, Marker, useMapEvents} from 'react-leaflet'
 
 
-export default function DataRetrieval(props: { stations: StationData[], setStations: React.Dispatch<React.SetStateAction<StationData[]>>, latitude: number, setLatitude: React.Dispatch<React.SetStateAction<number>>, longitude: number, setLongitude: React.Dispatch<React.SetStateAction<number>>, callsUsed: number, setCallsUsed: React.Dispatch<React.SetStateAction<number>>, startDate: Date, setStartDate: React.Dispatch<React.SetStateAction<Date>> }) {
-    const [timeDifference, setTimeDifference] = useState<number>(0);
+export default function DataRetrieval(
+    props: { 
+        stations: StationData[], 
+        setStations: React.Dispatch<React.SetStateAction<StationData[]>>, 
+        latitude: number, 
+        setLatitude: React.Dispatch<React.SetStateAction<number>>, 
+        longitude: number, 
+        setLongitude: React.Dispatch<React.SetStateAction<number>>, 
+        callsUsed: number, 
+        setCallsUsed: React.Dispatch<React.SetStateAction<number>>, 
+        startDate: Date, 
+        setStartDate: React.Dispatch<React.SetStateAction<Date>>,
+        timeDifference: number, 
+        setTimeDifference: React.Dispatch<React.SetStateAction<number>>
+    }
+) {
     const formatter = new Intl.NumberFormat('en-US', {
         style: 'decimal',
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     });
-    async function fetchStops(): Promise<void> {
-        setTimeDifference((new Date().getTime() - props.startDate.getTime()) / 1000);
-        if (timeDifference > 60){
-            props.setStartDate(new Date())
-            setTimeDifference((new Date().getTime() - props.startDate.getTime()) / 1000);
-            props.setCallsUsed(0)
-        }
-        if (timeDifference <= 60 && props.callsUsed < 18){
-            const url = `https://api-v3.mbta.com/stops/?filter[latitude]=${props.latitude}&filter[longitude]=${props.longitude}&filter[radius]=360&sort=distance&filter[location_type]=1`;
-            const rawData = await fetch(url);
-            const { data }: { data: StationData[] } = await rawData.json();
-            for (const station of data) {
-                station.attributes.distance = haversine(station.attributes.latitude, station.attributes.longitude, props.latitude, props.longitude);
-            }
-            data.sort((a, b) => a.attributes.distance - b.attributes.distance)
-            for (let i = 0; i < 5; i++) {
-                data[i].attributes.trains = await fetchTrains(data[i].id)
-            }
-            props.setCallsUsed(props.callsUsed + 6);
-            props.setStations(data);
-        }
-    }
-    async function fetchTrains(place_id: string): Promise<TrainData[]> {
+
+    async function fetchTrains(place_id: string): Promise<Map<string, TrainData[]>> {
         const url = `https://api-v3.mbta.com/predictions?filter[stop]=${place_id}`;
         const response = await fetch(url);
         const { data }: { data: TrainData[] } = await response.json();
         const currentDate = new Date();
+        const trainLines = new Map<string, TrainData[]>();
         for (const train of data) {
+            let line = "";
             if (train.attributes.arrival_time) {
                 train.attributes.eta = (new Date(train.attributes.arrival_time).getTime() - currentDate.getTime()) / 60000;
             }
             if (train.id.includes("Green") || train.id.includes("CR")) {
-                train.attributes.service = train.id.split("-").at(-2);
-                train.attributes.line = train.id.split("-").at(-1);
+                line = `${train.id.split("-").at(-2)} ${train.id.split("-").at(-1)}`;
             }
             if (train.id.includes("Red") || train.id.includes("Blue") || train.id.includes("Orange")) {
-                train.attributes.service = train.id.split("-").at(-1);
+                line = `${train.id.split("-").at(-1)}`;
             }
-            train.attributes.direction = train.attributes.direction_id === 1 ? "Inbound" : "Outbound"
+            train.attributes.direction = train.attributes.direction_id === 1 ? "Inbound" : "Outbound";
+
+            if (train.attributes.arrival_time !== null && line && train.attributes.eta > 0) {
+                if (trainLines.has(line)) {
+                    trainLines.get(line)?.push(train)
+                } else {
+                    trainLines.set(line, [train])
+                }
+            }
         }
-        return data;
+        return trainLines;
     }
     function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
         // distance between latitudes
@@ -71,19 +73,53 @@ export default function DataRetrieval(props: { stations: StationData[], setStati
         const c = 2 * Math.asin(Math.sqrt(a));
         return rad * c * 0.621371;
     }
+
+    function MyComponent() {
+        useMapEvents({
+            click(e) {
+                fetchStops(e.latlng.lat, e.latlng.lng);
+            },
+        });
+        return null
+    }
+
+    async function fetchStops(latitude:number, longitude:number): Promise<void> {
+        const timeDifference = (new Date().getTime() - props.startDate.getTime()) / 1000;
+        props.setTimeDifference(timeDifference)
+        const callsUsed = props.callsUsed;
+        console.log(props.callsUsed)
+        if (timeDifference <= 60 && callsUsed < 18) {
+            const url = `https://api-v3.mbta.com/stops/?filter[latitude]=${latitude}&filter[longitude]=${longitude}&filter[radius]=360&sort=distance&filter[location_type]=1`;
+            const response = await fetch(url);
+            if (response.status == 429) {
+                props.setCallsUsed(callsUsed => callsUsed + 18);
+            }
+            const { data }: { data: StationData[] } = await response.json();
+            for (const station of data) {
+                station.attributes.distance = haversine(station.attributes.latitude, station.attributes.longitude, latitude, longitude);
+            }
+            data.sort((a, b) => a.attributes.distance - b.attributes.distance);
+            for (let i = 0; i < 5; i++) {
+                data[i].attributes.trains = await fetchTrains(data[i].id);
+            }
+            props.setCallsUsed(callsUsed => callsUsed + 6);
+            props.setStations(data);
+            props.setLatitude(latitude);
+            props.setLongitude(longitude);
+        }
+    }
     return (
         <div>
-            <h1>{`${formatter.format(timeDifference)} Seconds`}</h1>
-            <h2>{props.callsUsed === 18 ? `Please try again in ${formatter.format(60-timeDifference)} Seconds` : ""}</h2>
-            <div>
-                <label>Latitude:</label>
-                <input type="number" id="latitude" value={props.latitude} onChange={(e) => props.setLatitude(Number(e.target.value))}></input>
-            </div>
-            <div>
-                <label>Longitude:</label>
-                <input type="number" id="longitude" value={props.longitude} onChange={(e) => props.setLongitude(Number(e.target.value))}></input>
-            </div> 
-            <button onClick={fetchStops}>Get Stations</button>
+            <h2>{props.callsUsed === 18 ? `Please try again in ${formatter.format(60-props.timeDifference)} Seconds` : ""}</h2>
+            <MapContainer center={[props.latitude, props.longitude]} zoom={14} scrollWheelZoom={true} style={{ height: "50vh", width: "100%" }}>
+                <MyComponent />
+
+                <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <Marker position={[props.latitude, props.longitude]}>
+                </Marker>
+            </MapContainer>
         </div>
     );
 }
