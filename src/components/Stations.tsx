@@ -25,6 +25,7 @@ const formatter = new Intl.NumberFormat('en-US', {
 export default function Stations(props: { stations: StationData[] }) {
     return (
         <div>
+            {/* Top 5 statices only */}
             {props.stations.slice(0, 5).map((station: StationData) => (
                 <StationDiv>
                     <h1>{station.attributes.name} <StationSpan>{`${formatter.format(station.attributes.distance)} mi`}</StationSpan></h1>

@@ -1,12 +1,13 @@
-#root {
-  width: 80%;
-  text-align: center;
-  margin: 0 auto;
-}
 *{
     margin: 0;
     box-sizing: border-box;
     background-color: #F4F2EE;
+}
+
+#root {
+  width: 80%;
+  text-align: center;
+  margin: 0 auto;
 }
 
 

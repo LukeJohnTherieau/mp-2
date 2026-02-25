@@ -7,6 +7,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import customMarkerImage from '../assets/MBTA.svg';
 
+// If MBTA icon appears on map, then position has been selected
 const myCustomIcon = new L.Icon({
   iconUrl: customMarkerImage, 
   iconSize: [32, 32], 
@@ -18,13 +19,12 @@ const ErrorMessage = styled.p`
     color: red;
 `;
 
-
 export default function DataRetrieval(props: { stations: StationData[], setStations: React.Dispatch<React.SetStateAction<StationData[]>>}) {
     const [latitude, setLatitude] = useState<number>(42.3555);
     const [longitude, setLongitude] = useState<number>(-71.0565);
-    const [callsUsed, setCallsUsed] = useState<number>(0);
+    const [callsUsed, setCallsUsed] = useState<number>(0);          // Number of API calls (20 per 60 Seconds is limit for MBTA)
     const [startDate, setStartDate] = useState<Date>(new Date());
-    const [timeDifference, setTimeDifference] = useState<number>(0);
+    const [timeDifference, setTimeDifference] = useState<number>(0); // Time since first API call (resets evvery 60 Seconds)
     
     const formatter = new Intl.NumberFormat('en-US', {
         style: 'decimal',
@@ -36,6 +36,7 @@ export default function DataRetrieval(props: { stations: StationData[], setStati
         const url = `https://api-v3.mbta.com/predictions?filter[stop]=${place_id}`;
         const trainLines = new Map<string, TrainData[]>();
         try {
+            // Get all projections for station
             const response = await fetch(url);
             const { data }: { data: TrainData[] } = await response.json();
             const currentDate = new Date();
@@ -44,14 +45,18 @@ export default function DataRetrieval(props: { stations: StationData[], setStati
                 if (train.attributes.arrival_time) {
                     train.attributes.eta = (new Date(train.attributes.arrival_time).getTime() - currentDate.getTime()) / 60000;
                 }
-                if (train.id.includes("Green") || train.id.includes("CR")) {
+                // Commuter Rail and Green Line have several branches
+                if (train.id.includes("Green") || train.id.includes("CR")) {                 
                     line = `${train.id.split("-").at(-2)} ${train.id.split("-").at(-1)}`;
                 }
+                // Just the name of the subway line is needed
                 if (train.id.includes("Red") || train.id.includes("Blue") || train.id.includes("Orange")) {
                     line = `${train.id.split("-").at(-1)}`;
                 }
+                // Convert direction id to a useful label
                 train.attributes.direction = train.attributes.direction_id === 1 ? "Inbound" : "Outbound";
 
+                // Only allow projected trains that have a arrival time and eta (avoid cancelled trips)
                 if (train.attributes.arrival_time !== null && line && train.attributes.eta > 0) {
                     if (trainLines.has(line)) {
                         trainLines.get(line)?.push(train)
@@ -62,6 +67,7 @@ export default function DataRetrieval(props: { stations: StationData[], setStati
             }
 
         } catch (e) {
+            // Set API call count to max for app (this will stop calls for 60 seconds)
             console.log(e)
             setCallsUsed(18);
 
@@ -78,6 +84,7 @@ export default function DataRetrieval(props: { stations: StationData[], setStati
     }
 
     function distanceBetweenCoordinates(lat1: number, lon1: number, lat2: number, lon2: number) {
+        // https://en.wikipedia.org/wiki/Haversine_formula
         return 6371 * 2 * Math.asin(
             Math.sqrt(
                 Math.pow(
@@ -97,6 +104,7 @@ export default function DataRetrieval(props: { stations: StationData[], setStati
         ) * 0.621371;
     }
 
+    // Used to handle map click events (changing current position)
     function HandleMapEvent() {
         useMapEvents({
             click(e) {
@@ -119,10 +127,13 @@ export default function DataRetrieval(props: { stations: StationData[], setStati
             try {
                 const response = await fetch(url);
                 const { data }: { data: StationData[] } = await response.json();
+                // For each station, calculate distance between current selected position and each station
                 for (const station of data) {
                     station.attributes.distance = distanceBetweenCoordinates(station.attributes.latitude, station.attributes.longitude, newLatitude, newLongitude);
                 }
+                // Sort in ascending order the top 5 closest stations to current position
                 data.sort((a, b) => a.attributes.distance - b.attributes.distance);
+                // For top five closest stations, find projected train times
                 for (let i = 0; i < 5; i++) {
                     data[i].attributes.trains = await fetchTrains(data[i].id);
                 }
@@ -132,6 +143,7 @@ export default function DataRetrieval(props: { stations: StationData[], setStati
                 setLongitude(newLongitude);
 
             } catch(e) {
+                // Set API call count to max for app (this will stop calls for 60 seconds)
                 console.log(e);
                 setCallsUsed(18);
 
